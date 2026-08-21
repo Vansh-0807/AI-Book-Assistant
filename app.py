@@ -387,44 +387,23 @@ st.markdown(
         /* =====================================================
            CHAT
         ===================================================== */
-        .chat-user {
-            background:
-                linear-gradient(
-                    135deg,
-                    rgba(79, 70, 229, 0.30),
-                    rgba(59, 130, 246, 0.15)
-                );
-            border:
-                1px solid
-                rgba(99, 102, 241, 0.22);
-            padding:
-                16px 20px;
-            border-radius: 18px;
-            margin:
-                14px 0;
-            box-shadow:
-                0 10px 35px
-                rgba(0, 0, 0, 0.15);
+        /* Override native chat message containers */
+        [data-testid="stChatMessage"] {
+            background: rgba(15, 23, 42, 0.72) !important;
+            border: 1px solid rgba(148, 163, 184, 0.12) !important;
+            padding: 18px 20px !important;
+            border-radius: 18px !important;
+            margin: 14px 0 !important;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18) !important;
         }
-        .chat-ai {
-            background:
-                rgba(15, 23, 42, 0.72);
-            border:
-                1px solid
-                rgba(148, 163, 184, 0.12);
-            padding:
-                18px 20px;
-            border-radius: 18px;
-            margin:
-                14px 0;
-            box-shadow:
-                0 12px 40px
-                rgba(0, 0, 0, 0.18);
+        /* Style user messages differently */
+        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.30), rgba(59, 130, 246, 0.15)) !important;
+            border: 1px solid rgba(99, 102, 241, 0.22) !important;
         }
-        .chat-label {
-            color: #a78bfa;
-            font-weight: 700;
-            font-size: 14px;
+        /* Keep avatar backgrounds transparent */
+        [data-testid="stChatMessageAvatar"] {
+            background-color: transparent !important;
         }
         /* =====================================================
            BUTTONS
@@ -698,65 +677,7 @@ st.markdown(
 )
 
 
-# ============================================================
-# METRICS
-# ============================================================
 
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    st.markdown(
-        textwrap.dedent("""
-        <div class="metric-card">
-            <div class="metric-number">
-                MMR
-            </div>
-            <div class="metric-label">
-                Retrieval Strategy
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
-
-
-with col2:
-
-    st.markdown(
-        textwrap.dedent("""
-        <div class="metric-card">
-            <div class="metric-number">
-                4
-            </div>
-            <div class="metric-label">
-                Chunks Retrieved
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
-
-
-with col3:
-
-    st.markdown(
-        textwrap.dedent("""
-        <div class="metric-card">
-            <div class="metric-number">
-                RAG
-            </div>
-            <div class="metric-label">
-                Architecture
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
-
-
-st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ============================================================
@@ -792,37 +713,12 @@ if len(st.session_state.messages) == 0:
 # ============================================================
 
 for message in st.session_state.messages:
-
     if message["role"] == "user":
-
-        st.markdown(
-            textwrap.dedent(f"""
-            <div class="chat-user">
-                <div class="chat-label">
-                    🧑 You
-                </div>
-                <br>
-                {message["content"]}
-            </div>
-            """),
-            unsafe_allow_html=True
-        )
-
+        with st.chat_message("user", avatar="🧑"):
+            st.markdown(message["content"])
     else:
-
-        st.markdown(
-            textwrap.dedent(f"""
-            <div class="chat-ai">
-                <div class="chat-label">
-                    🧠 NeuroRAG
-                </div>
-                <br>
-                {message["content"]}
-            </div>
-            """),
-            unsafe_allow_html=True
-        )
-
+        with st.chat_message("assistant", avatar="🧠"):
+            st.markdown(message["content"])
 
 # ============================================================
 # CHAT INPUT
@@ -838,11 +734,7 @@ query = st.chat_input(
 # ============================================================
 
 if query:
-
-    # --------------------------------------------------------
-    # SAVE USER MESSAGE
-    # --------------------------------------------------------
-
+    
     st.session_state.messages.append(
         {
             "role": "user",
@@ -850,127 +742,43 @@ if query:
         }
     )
 
+    with st.chat_message("user", avatar="🧑"):
+        st.markdown(query)
 
-    # --------------------------------------------------------
-    # DISPLAY USER MESSAGE
-    # --------------------------------------------------------
+    with st.chat_message("assistant", avatar="🧠"):
+        
+        status = st.status("🔍 Searching knowledge base...", state="running", expanded=False)
+        with status:
+            docs = retriever.invoke(query)
+            st.write(f"Found {len(docs)} relevant chunks.")
+            status.update(label="🧠 Generating grounded answer...", state="running")
+            
+            context = "\n\n".join([doc.page_content for doc in docs])
+            
+            from langchain_core.output_parsers import StrOutputParser
+            chain = prompt | llm | StrOutputParser()
+            
+            status.update(label="💡 Answering...", state="complete")
 
-    st.markdown(
-        textwrap.dedent(f"""
-        <div class="chat-user">
-            <div class="chat-label">
-                🧑 You
-            </div>
-            <br>
-            {query}
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
-
-
-    # --------------------------------------------------------
-    # RETRIEVE DOCUMENTS
-    # --------------------------------------------------------
-
-    with st.spinner(
-        "🔍 Searching the knowledge base..."
-    ):
-
-        docs = retriever.invoke(query)
-
-
-    # --------------------------------------------------------
-    # CREATE CONTEXT
-    # --------------------------------------------------------
-
-    context = "\n\n".join(
-        [
-            doc.page_content
-            for doc in docs
-        ]
-    )
-
-
-    # --------------------------------------------------------
-    # CREATE PROMPT
-    # --------------------------------------------------------
-
-    final_prompt = prompt.invoke(
-        {
-            "context": context,
-            "question": query
-        }
-    )
-
-
-    # --------------------------------------------------------
-    # GENERATE RESPONSE
-    # --------------------------------------------------------
-
-    with st.spinner(
-        "🧠 Generating grounded answer..."
-    ):
-
-        response = llm.invoke(
-            final_prompt
+        # Stream the response
+        stream = chain.stream(
+            {
+                "context": context,
+                "question": query
+            }
         )
-
-
-    answer = response.content
-
-
-    # --------------------------------------------------------
-    # SAVE AI MESSAGE
-    # --------------------------------------------------------
-
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": answer
-        }
-    )
-
-
-    # --------------------------------------------------------
-    # DISPLAY ANSWER
-    # --------------------------------------------------------
-
-    st.markdown(
-        textwrap.dedent(f"""
-        <div class="chat-ai">
-            <div class="chat-label">
-                🧠 NeuroRAG
-            </div>
-            <br>
-            {answer}
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
-
-
-    # --------------------------------------------------------
-    # SHOW RETRIEVED DOCUMENTS
-    # --------------------------------------------------------
-
-    with st.expander(
-        "📚 View Retrieved Context"
-    ):
-
-        for i, doc in enumerate(
-            docs,
-            start=1
-        ):
-
-            st.markdown(
-                f"### Chunk {i}"
-            )
-
-            st.write(
-                doc.page_content
-            )
-
-            if i != len(docs):
-
-                st.divider()
+        answer = st.write_stream(stream)
+        
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
+        
+        with st.expander("📚 View Retrieved Context"):
+            for i, doc in enumerate(docs, start=1):
+                st.markdown(f"### Chunk {i}")
+                st.write(doc.page_content)
+                if i != len(docs):
+                    st.divider()
