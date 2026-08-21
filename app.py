@@ -22,7 +22,7 @@ st.set_page_config(
     page_title="AI Book Assistant",
     page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 
@@ -558,92 +558,6 @@ llm, retriever, prompt = load_rag_system()
 if "messages" not in st.session_state:
 
     st.session_state.messages = []
-
-
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-with st.sidebar:
-
-    st.markdown(
-        textwrap.dedent(
-            """
-            <div class="sidebar-logo">
-                <div class="sidebar-logo-icon">
-                    🧠
-                </div>
-                <div class="sidebar-title">
-                    AI Book Assistant
-                </div>
-                <br>
-                <div class="status">
-                    <span class="status-dot"></span>
-                    RAG System Online
-                </div>
-            </div>
-            """
-        ),
-        unsafe_allow_html=True
-    )
-
-    st.divider()
-
-    st.markdown(
-        '<div class="sidebar-section">Retrieval Configuration</div>',
-        unsafe_allow_html=True
-    )
-
-    st.info(
-        """
-        **Strategy:** MMR
-
-        **Chunks:** 4
-
-        **Lambda:** 0.5
-
-        **Embedding:** MistralAI
-
-        **Vector DB:** Chroma
-        """
-    )
-
-    st.markdown(
-        '<div class="sidebar-section">RAG Pipeline</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        """
-        📄 **PDF Document**
-        ↓
-        ✂️ **Text Chunking**
-        ↓
-        🔢 **Mistral Embeddings**
-        ↓
-        🗄️ **ChromaDB**
-        ↓
-        🔍 **MMR Retrieval**
-        ↓
-        🧠 **Mistral LLM**
-        ↓
-        💬 **Grounded Answer**
-        """
-    )
-    st.divider()
-    st.markdown(
-        '<div class="sidebar-section">Controls</div>',
-        unsafe_allow_html=True
-    )
-
-    if st.button(
-        "🗑️ Clear Conversation",
-        use_container_width=True
-    ):
-
-        st.session_state.messages = []
-
-        st.rerun()
 
 
 # ============================================================
