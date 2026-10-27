@@ -482,7 +482,7 @@ st.markdown(
 # ============================================================
 
 st.markdown("<p style='color:#94a3b8; font-size:13px;'>Suggested questions & visuals:</p>", unsafe_allow_html=True)
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.button(
@@ -508,14 +508,14 @@ with col3:
         args=("Explain memory hierarchy from registers to disk with a diagram",),
         use_container_width=True
     )
-with col4:
-    st.button(
-        "🎨 Draw CPU architecture",
-        key="btn_img",
-        on_click=select_suggestion,
-        args=("Generate an image of a modern computer CPU architecture and explain it",),
-        use_container_width=True
-    )
+# with col4:
+#     st.button(
+#         "🎨 Draw CPU architecture",
+#         key="btn_img",
+#         on_click=select_suggestion,
+#         args=("Generate an image of a modern computer CPU architecture and explain it",),
+#         use_container_width=True
+#     )
 
 
 # ============================================================
