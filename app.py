@@ -1,6 +1,7 @@
 import warnings
 warnings.filterwarnings('ignore')
 import textwrap
+import os
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -11,10 +12,19 @@ from langchain_core.output_parsers import StrOutputParser
 
 
 # ============================================================
-# ENVIRONMENT
+# ENVIRONMENT & STREAMLIT CLOUD SECRETS
 # ============================================================
 
 load_dotenv()
+
+# Read secrets from Streamlit Cloud dashboard if deployed
+try:
+    if "GOOGLE_API_KEY" in st.secrets:
+        os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
+    elif "GEMINI_API_KEY" in st.secrets:
+        os.environ["GOOGLE_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    pass
 
 
 
@@ -428,6 +438,28 @@ Question:
 
     return llm, retriever, prompt
 
+
+# Validate API key before initializing to avoid raw crashes on Streamlit Cloud
+if not os.getenv("GOOGLE_API_KEY"):
+    st.error(
+        "🔑 **Google Gemini API Key is missing!**\n\n"
+        "If you are deployed on **Streamlit Cloud**:\n"
+        "1. Click **Manage app** in the bottom right corner of this screen.\n"
+        "2. Click the three dots `⋮` -> **Settings** -> **Secrets**.\n"
+        "3. Paste your key in this format:\n"
+        "```toml\n"
+        "GOOGLE_API_KEY = \"your_gemini_api_key_here\"\n"
+        "```\n"
+        "4. Click **Save** and the app will start working immediately!"
+    )
+    st.stop()
+
+if not os.path.exists("chroma-db"):
+    st.error(
+        "📚 **Database `chroma-db` not found on server!**\n\n"
+        "Make sure your `chroma-db/` folder is committed to your GitHub repository."
+    )
+    st.stop()
 
 # Quietly initialize RAG system
 llm, retriever, prompt = load_rag_system()
