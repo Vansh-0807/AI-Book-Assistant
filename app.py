@@ -360,10 +360,28 @@ st.markdown(
             color: #ffffff;
             background: rgba(79, 70, 229, 0.4);
         }
+        /* Ensure bottom pinned chat input bar is dark & seamless */
+        [data-testid="stBottom"],
+        [data-testid="stBottom"] > div,
+        [data-testid="stBottomBlockContainer"],
+        .stChatFloatingInputContainer {
+            background-color: transparent !important;
+            background: transparent !important;
+        }
+
         div[data-testid="stChatInput"] {
-            background: rgba(15, 23, 42, 0.82);
-            border-radius: 18px;
-            border: 1px solid rgba(148, 163, 184, 0.14);
+            background: rgba(15, 23, 42, 0.90) !important;
+            border-radius: 18px !important;
+            border: 1px solid rgba(148, 163, 184, 0.24) !important;
+        }
+
+        div[data-testid="stChatInput"] textarea {
+            color: #f8fafc !important;
+            background: transparent !important;
+        }
+
+        div[data-testid="stChatInput"] textarea::placeholder {
+            color: #94a3b8 !important;
         }
         </style>
 
