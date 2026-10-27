@@ -1,5 +1,5 @@
 python-dotenv
-langchain-mistralai
+langchain-google-genai
 langchain-community
 langchain-core
 langchain

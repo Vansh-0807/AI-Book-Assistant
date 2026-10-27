@@ -1,10 +1,13 @@
+import warnings
+warnings.filterwarnings('ignore')
 import textwrap
 import streamlit as st
 from dotenv import load_dotenv
 
-from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 
 # ============================================================
@@ -14,13 +17,124 @@ from langchain_core.prompts import ChatPromptTemplate
 load_dotenv()
 
 
+
+import io
+import re
+import urllib.parse
+import requests
+from PIL import Image
+import streamlit.components.v1 as components
+
+# ============================================================
+# DIAGRAM & IMAGE GENERATION HELPERS
+# ============================================================
+
+def render_mermaid(diagram_code: str, height: int = 360):
+    """Renders a Mermaid.js diagram directly inside an interactive HTML container."""
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <script type="module">
+          import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+          mermaid.initialize({{ 
+              startOnLoad: true, 
+              theme: 'dark',
+              securityLevel: 'loose'
+          }});
+        </script>
+        <style>
+          body {{
+            background: transparent;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: auto;
+          }}
+          .mermaid svg {{
+            max-width: 100%;
+            height: auto;
+          }}
+        </style>
+      </head>
+      <body>
+        <div class="mermaid">
+          {diagram_code}
+        </div>
+      </body>
+    </html>
+    """
+    components.html(html_code, height=height, scrolling=True)
+
+def display_response_with_diagrams(content: str):
+    """
+    Parses content for ```mermaid ... ``` code blocks.
+    Renders text with st.markdown and diagrams with render_mermaid().
+    """
+    mermaid_regex = r"```mermaid\s*([\s\S]*?)\s*```"
+    parts = re.split(mermaid_regex, content)
+    for i, part in enumerate(parts):
+        if i % 2 == 0:
+            if part.strip():
+                st.markdown(part)
+        else:
+            if part.strip():
+                render_mermaid(part.strip())
+
+def is_image_request(user_query: str) -> bool:
+    """Detects if user explicitly asked for an image or illustration."""
+    keywords = [
+        "image", "picture", "photo", "illustration", "draw",
+        "generate image", "create image", "show picture"
+    ]
+    q = user_query.lower()
+    return any(k in q for k in keywords)
+
+def generate_visual_image(prompt_text: str):
+    """
+    Generates an AI visual for technical and computer science concepts.
+    Tries Google Imagen 3 first, and automatically falls back to Pollinations AI
+    so the user is guaranteed an image with zero downtime or quota issues.
+    """
+    # 1. Try Google Imagen 3 if available
+    try:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+        result = client.models.generate_images(
+            model="imagen-3.0-generate-002",
+            prompt=f"Educational technical visual: {prompt_text}, high detail, 3D computer engineering render, clean background",
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
+                output_mime_type="image/jpeg",
+            )
+        )
+        if result and result.generated_images:
+            img_bytes = result.generated_images[0].image.image_bytes
+            return Image.open(io.BytesIO(img_bytes))
+    except Exception:
+        pass
+
+    # 2. Resilient fallback via high-quality Pollinations AI
+    try:
+        encoded_prompt = urllib.parse.quote(f"Computer science concept diagram: {prompt_text}, 4k, crisp, educational illustration")
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true&seed=42"
+        resp = requests.get(image_url, timeout=20)
+        if resp.status_code == 200:
+            return Image.open(io.BytesIO(resp.content))
+    except Exception:
+        pass
+
+    return None
+
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
     page_title="AI Book Assistant",
-    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -58,15 +172,10 @@ st.markdown(
             color: #f8fafc;
         }
         /* Remove Streamlit branding */
-        #MainMenu {
+        #MainMenu, footer, header {
             visibility: hidden;
         }
-        footer {
-            visibility: hidden;
-        }
-        header {
-            visibility: hidden;
-        }
+        
         /* =====================================================
            ANIMATED 3D BACKGROUND
         ===================================================== */
@@ -101,8 +210,7 @@ st.markdown(
                     rgba(99, 102, 241, 0.9),
                     rgba(99, 102, 241, 0.05) 70%
                 );
-            box-shadow:
-                0 0 90px rgba(99, 102, 241, 0.45);
+            box-shadow: 0 0 90px rgba(99, 102, 241, 0.45);
             animation-delay: 0s;
         }
         .orb-two {
@@ -116,8 +224,7 @@ st.markdown(
                     rgba(168, 85, 247, 0.9),
                     rgba(168, 85, 247, 0.04) 70%
                 );
-            box-shadow:
-                0 0 120px rgba(168, 85, 247, 0.40);
+            box-shadow: 0 0 120px rgba(168, 85, 247, 0.40);
             animation-delay: -4s;
         }
         .orb-three {
@@ -131,351 +238,125 @@ st.markdown(
                     rgba(6, 182, 212, 0.9),
                     rgba(6, 182, 212, 0.04) 70%
                 );
-            box-shadow:
-                0 0 100px rgba(6, 182, 212, 0.35);
+            box-shadow: 0 0 100px rgba(6, 182, 212, 0.35);
             animation-delay: -7s;
         }
         @keyframes floating {
-            0%,
-            100% {
-                transform:
-                    translate3d(0, 0, 0);
-            }
-            50% {
-                transform:
-                    translate3d(35px, -45px, 40px);
-            }
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            50% { transform: translate3d(35px, -45px, 40px); }
         }
         @keyframes rotating {
-            from {
-                rotate: 0deg;
-            }
-            to {
-                rotate: 360deg;
-            }
+            from { rotate: 0deg; }
+            to { rotate: 360deg; }
         }
+
         /* =====================================================
-           MAIN CONTENT
-        ===================================================== */
-        .main-container {
-            position: relative;
-            z-index: 2;
-            max-width: 1400px;
-            margin: auto;
-            padding-bottom: 40px;
-        }
-        /* =====================================================
-           HERO
+           HERO SECTION
         ===================================================== */
         .hero {
             text-align: center;
-            padding:
-                45px
-                20px
-                28px
-                20px;
+            padding: 35px 20px 20px 20px;
         }
         .hero-icon {
-            font-size: 58px;
-            margin-bottom: 10px;
-            filter:
-                drop-shadow(
-                    0 0 25px
-                    rgba(129, 140, 248, 0.55)
-                );
-            animation:
-                iconFloat 4s ease-in-out infinite;
+            font-size: 52px;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 0 25px rgba(129, 140, 248, 0.55));
+            animation: iconFloat 4s ease-in-out infinite;
         }
         @keyframes iconFloat {
-            0%,
-            100% {
-                transform:
-                    translateY(0px)
-                    rotate(0deg);
-            }
-            50% {
-                transform:
-                    translateY(-8px)
-                    rotate(3deg);
-            }
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(3deg); }
         }
         .hero-title {
-            font-size: 58px;
+            font-size: 52px;
             font-weight: 850;
-            letter-spacing: -3px;
+            letter-spacing: -2px;
             margin: 0;
-            background:
-                linear-gradient(
-                    90deg,
-                    #60a5fa,
-                    #a78bfa,
-                    #f472b6,
-                    #60a5fa
-                );
+            background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #60a5fa);
             background-size: 300% auto;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            animation:
-                gradientMove 6s linear infinite;
+            animation: gradientMove 6s linear infinite;
         }
         @keyframes gradientMove {
-            to {
-                background-position:
-                    300% center;
-            }
+            to { background-position: 300% center; }
         }
         .hero-subtitle {
             color: #94a3b8;
-            font-size: 17px;
-            margin-top: 10px;
-            margin-bottom: 20px;
+            font-size: 16px;
+            margin-top: 8px;
+            margin-bottom: 16px;
         }
-        /* =====================================================
-           STATUS BADGE
-        ===================================================== */
+
+        /* STATUS BADGE */
         .status {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding:
-                8px
-                15px;
+            padding: 6px 14px;
             border-radius: 999px;
-            background:
-                rgba(34, 197, 94, 0.08);
-            border:
-                1px solid
-                rgba(34, 197, 94, 0.22);
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.22);
             color: #86efac;
             font-size: 13px;
-            box-shadow:
-                0 0 25px
-                rgba(34, 197, 94, 0.05);
         }
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             background: #22c55e;
-            box-shadow:
-                0 0 12px
-                #22c55e;
-            animation:
-                pulse 1.8s ease-in-out infinite;
+            box-shadow: 0 0 12px #22c55e;
+            animation: pulse 1.8s ease-in-out infinite;
         }
         @keyframes pulse {
-            0%,
-            100% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.35;
-            }
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
-        /* =====================================================
-           GLASS CARDS
-        ===================================================== */
+
+        /* GLASS CARD */
         .glass-card {
-            background:
-                rgba(15, 23, 42, 0.58);
-            border:
-                1px solid
-                rgba(148, 163, 184, 0.13);
-            border-radius: 22px;
-            padding: 22px;
-            backdrop-filter:
-                blur(18px);
-            -webkit-backdrop-filter:
-                blur(18px);
-            box-shadow:
-                0 25px 80px
-                rgba(0, 0, 0, 0.32),
-                inset 0 1px 0
-                rgba(255, 255, 255, 0.04);
-            transition:
-                transform 0.3s ease,
-                border-color 0.3s ease,
-                box-shadow 0.3s ease;
-        }
-        .glass-card:hover {
-            transform:
-                translateY(-4px);
-            border-color:
-                rgba(129, 140, 248, 0.32);
-            box-shadow:
-                0 30px 90px
-                rgba(0, 0, 0, 0.42),
-                0 0 40px
-                rgba(99, 102, 241, 0.07);
-        }
-        /* =====================================================
-           METRICS
-        ===================================================== */
-        .metric-card {
-            text-align: center;
-            padding: 20px;
-            min-height: 100px;
+            background: rgba(15, 23, 42, 0.58);
+            border: 1px solid rgba(148, 163, 184, 0.13);
             border-radius: 20px;
-            background:
-                rgba(15, 23, 42, 0.62);
-            border:
-                1px solid
-                rgba(148, 163, 184, 0.13);
-            backdrop-filter:
-                blur(15px);
-            box-shadow:
-                0 15px 50px
-                rgba(0, 0, 0, 0.22);
-            transition:
-                transform 0.3s ease,
-                box-shadow 0.3s ease;
+            padding: 20px;
+            backdrop-filter: blur(18px);
+            margin-bottom: 20px;
         }
-        .metric-card:hover {
-            transform:
-                translateY(-5px);
-            box-shadow:
-                0 20px 60px
-                rgba(99, 102, 241, 0.14);
-        }
-        .metric-number {
-            font-size: 28px;
-            font-weight: 800;
-            color: #a78bfa;
-            margin-bottom: 5px;
-        }
-        .metric-label {
-            color: #94a3b8;
-            font-size: 13px;
-        }
-        /* =====================================================
-           SIDEBAR
-        ===================================================== */
-        section[data-testid="stSidebar"] {
-            background:
-                rgba(5, 8, 22, 0.94);
-            border-right:
-                1px solid
-                rgba(148, 163, 184, 0.10);
-        }
-        .sidebar-logo {
-            text-align: center;
-            padding:
-                20px 0;
-        }
-        .sidebar-logo-icon {
-            font-size: 50px;
-            filter:
-                drop-shadow(
-                    0 0 20px
-                    rgba(129, 140, 248, 0.55)
-                );
-        }
-        .sidebar-title {
-            font-size: 24px;
-            font-weight: 750;
-            margin-top: 5px;
-            color: #e2e8f0;
-        }
-        .sidebar-section {
-            color: #94a3b8;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-            margin-top: 22px;
-            margin-bottom: 10px;
-        }
-        /* =====================================================
-           CHAT
-        ===================================================== */
-        /* Override native chat message containers */
+
+        /* CHAT STYLING */
         [data-testid="stChatMessage"] {
             background: rgba(15, 23, 42, 0.72) !important;
             border: 1px solid rgba(148, 163, 184, 0.12) !important;
-            padding: 18px 20px !important;
+            padding: 16px 20px !important;
             border-radius: 18px !important;
-            margin: 14px 0 !important;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18) !important;
+            margin: 12px 0 !important;
         }
-        /* Style user messages differently */
         [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-            background: linear-gradient(135deg, rgba(79, 70, 229, 0.30), rgba(59, 130, 246, 0.15)) !important;
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.25), rgba(59, 130, 246, 0.15)) !important;
             border: 1px solid rgba(99, 102, 241, 0.22) !important;
         }
-        /* Keep avatar backgrounds transparent */
-        [data-testid="stChatMessageAvatar"] {
-            background-color: transparent !important;
-        }
-        /* =====================================================
-           BUTTONS
-        ===================================================== */
+
+        /* BUTTONS & CHAT INPUT */
         .stButton > button {
             border-radius: 12px;
-            border:
-                1px solid
-                rgba(129, 140, 248, 0.30);
-            background:
-                linear-gradient(
-                    135deg,
-                    rgba(79, 70, 229, 0.80),
-                    rgba(124, 58, 237, 0.80)
-                );
-            color: white;
-            font-weight: 600;
-            transition:
-                transform 0.25s ease,
-                box-shadow 0.25s ease;
+            border: 1px solid rgba(129, 140, 248, 0.30);
+            background: rgba(30, 41, 59, 0.7);
+            color: #cbd5e1;
+            transition: all 0.2s ease;
+            width: 100%;
         }
         .stButton > button:hover {
-            transform:
-                translateY(-2px);
-            box-shadow:
-                0 10px 30px
-                rgba(99, 102, 241, 0.25);
+            border-color: rgba(129, 140, 248, 0.6);
+            color: #ffffff;
+            background: rgba(79, 70, 229, 0.4);
         }
-        /* =====================================================
-           CHAT INPUT
-        ===================================================== */
         div[data-testid="stChatInput"] {
-            background:
-                rgba(15, 23, 42, 0.82);
+            background: rgba(15, 23, 42, 0.82);
             border-radius: 18px;
-            border:
-                1px solid
-                rgba(148, 163, 184, 0.14);
-            box-shadow:
-                0 10px 40px
-                rgba(0, 0, 0, 0.25);
-        }
-        /* =====================================================
-           EXPANDER
-        ===================================================== */
-        div[data-testid="stExpander"] {
-            background:
-                rgba(15, 23, 42, 0.50);
-            border:
-                1px solid
-                rgba(148, 163, 184, 0.12);
-            border-radius: 16px;
-        }
-        /* =====================================================
-           SCROLLBAR
-        ===================================================== */
-        ::-webkit-scrollbar {
-            width: 7px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #050816;
-        }
-        ::-webkit-scrollbar-thumb {
-            background:
-                rgba(129, 140, 248, 0.35);
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background:
-                rgba(129, 140, 248, 0.55);
+            border: 1px solid rgba(148, 163, 184, 0.14);
         }
         </style>
+
         <div class="background-scene">
             <div class="orb orb-one"></div>
             <div class="orb orb-two"></div>
@@ -488,18 +369,18 @@ st.markdown(
 
 
 # ============================================================
-# LOAD RAG SYSTEM
+# LOAD RAG SYSTEM (SILENCED DEFAULT LOADING SPINNER)
 # ============================================================
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_rag_system():
-
-    llm = ChatMistralAI(
-        model="mistral-small-latest",
-        temperature=0.3
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.3,
+        timeout=30
     )
 
-    embeddings = MistralAIEmbeddings()
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
     vectorstore = Chroma(
         persist_directory="chroma-db",
@@ -518,29 +399,29 @@ def load_rag_system():
         [
             (
                 "system",
-                """
-You are a helpful AI assistant.
-
+                """You are an expert AI assistant for Digital Principles & Computer Organization.
 Use ONLY the provided context to answer the question.
-
-If the answer is not present in the context,
-say:
-
+If the answer is not present in the context, say:
 "I could not find the answer in the document."
-"""
-            ),
 
+### Diagram Generation Guidelines:
+When explaining concepts involving multi-step processes, computer architectures, hardware layouts, state transitions, or execution flows (such as CPU pipelining, instruction cycle, memory hierarchy, cache operation, K-maps, or logic flow):
+1. Provide a clear, thorough explanation.
+2. Include a valid, clean Mermaid diagram inside a ```mermaid ... ``` code block.
+3. Supported diagram types:
+   - Flowcharts / Block Diagrams: `graph TD` (top-down) or `graph LR` (left-to-right)
+   - Sequence Diagrams: `sequenceDiagram`
+   - State Diagrams: `stateDiagram-v2`
+4. Always wrap labels with special characters in double quotes: e.g. id["Instruction Fetch (IF)"]
+5. Keep the diagram clean, readable, and directly aligned with the context."""
+            ),
             (
                 "human",
-                """
-Context:
-
+                """Context:
 {context}
 
 Question:
-
-{question}
-"""
+{question}"""
             )
         ]
     )
@@ -548,6 +429,7 @@ Question:
     return llm, retriever, prompt
 
 
+# Quietly initialize RAG system
 llm, retriever, prompt = load_rag_system()
 
 
@@ -555,34 +437,38 @@ llm, retriever, prompt = load_rag_system()
 # SESSION STATE
 # ============================================================
 
-if "messages" not in st.session_state:
 
+with st.sidebar:
+    st.markdown("### Controls")
+    if st.button("🗑️ Clear Chat History", use_container_width=True):
+        st.session_state.messages = []
+        st.cache_resource.clear()
+        st.rerun()
+
+if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "pending_prompt" not in st.session_state:
+    st.session_state.pending_prompt = None
+
+def select_suggestion(prompt_text):
+    st.session_state.pending_prompt = prompt_text
 
 
 # ============================================================
-# MAIN CONTAINER
+# HERO HEADER
 # ============================================================
 
 st.markdown(
     textwrap.dedent(
         """
-        <div class="main-container">
-            <div class="hero">
-                <div class="hero-icon">
-                    🧠
-                </div>
-                <div class="hero-title">
-                    AI Book Assistant
-                </div>
-                <div class="hero-subtitle">
-                    Ask questions. Retrieve knowledge.
-                    Get grounded answers.
-                </div>
-                <div class="status">
-                    <span class="status-dot"></span>
-                    AI Knowledge Base Ready
-                </div>
+        <div class="hero">
+            <div class="hero-icon">🧠</div>
+            <div class="hero-title">AI Book Assistant</div>
+            <div class="hero-subtitle">Ask questions. Retrieve knowledge. Get grounded answers.</div>
+            <div class="status">
+                <span class="status-dot"></span>
+                AI Knowledge Base Ready
             </div>
         </div>
         """
@@ -591,34 +477,44 @@ st.markdown(
 )
 
 
-
-
-
 # ============================================================
-# WELCOME MESSAGE
+# SUGGESTED PROMPTS (PERSISTENT & ALWAYS CLICKABLE)
 # ============================================================
 
-if len(st.session_state.messages) == 0:
+st.markdown("<p style='color:#94a3b8; font-size:13px;'>Suggested questions & visuals:</p>", unsafe_allow_html=True)
+col1, col2, col3, col4 = st.columns(4)
 
-    st.markdown(
-        textwrap.dedent("""
-        <div class="glass-card">
-            <h3>
-                👋 Welcome to AI Book Assistant
-            </h3>
-            <p style="color:#94a3b8;">
-                Ask questions about your uploaded
-                Digital Principles and Computer Organization
-                document.
-            </p>
-            <p style="color:#64748b;">
-                The system retrieves relevant document chunks
-                using MMR and generates an answer using
-                Mistral AI.
-            </p>
-        </div>
-        """),
-        unsafe_allow_html=True
+with col1:
+    st.button(
+        "💡 Explain Karnaugh maps",
+        key="btn_kmap",
+        on_click=select_suggestion,
+        args=("Explain Karnaugh maps",),
+        use_container_width=True
+    )
+with col2:
+    st.button(
+        "⚙️ Instruction pipelining",
+        key="btn_pipeline",
+        on_click=select_suggestion,
+        args=("Explain instruction pipelining with a flow diagram",),
+        use_container_width=True
+    )
+with col3:
+    st.button(
+        "🔌 Cache memory hierarchy",
+        key="btn_cache",
+        on_click=select_suggestion,
+        args=("Explain memory hierarchy from registers to disk with a diagram",),
+        use_container_width=True
+    )
+with col4:
+    st.button(
+        "🎨 Draw CPU architecture",
+        key="btn_img",
+        on_click=select_suggestion,
+        args=("Generate an image of a modern computer CPU architecture and explain it",),
+        use_container_width=True
     )
 
 
@@ -632,15 +528,21 @@ for message in st.session_state.messages:
             st.markdown(message["content"])
     else:
         with st.chat_message("assistant", avatar="🧠"):
-            st.markdown(message["content"])
+            display_response_with_diagrams(message["content"])
+            if "image" in message and message["image"]:
+                st.image(message["image"], caption="Generated Technical Illustration", use_container_width=True)
+
 
 # ============================================================
-# CHAT INPUT
+# CHAT INPUT & PROMPT HANDLING
 # ============================================================
 
-query = st.chat_input(
-    "Ask something about Digital Principles & Computer Organization..."
-)
+user_input = st.chat_input("Ask something about Digital Principles & Computer Organization...")
+query = user_input or st.session_state.pending_prompt
+
+# Reset the pending prompt so each click fires exactly once
+if st.session_state.pending_prompt:
+    st.session_state.pending_prompt = None
 
 
 # ============================================================
@@ -648,51 +550,55 @@ query = st.chat_input(
 # ============================================================
 
 if query:
-    
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": query
-        }
-    )
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": query})
 
     with st.chat_message("user", avatar="🧑"):
         st.markdown(query)
 
+    # Process Assistant Response
     with st.chat_message("assistant", avatar="🧠"):
-        
-        status = st.status("🔍 Searching knowledge base...", state="running", expanded=False)
-        with status:
-            docs = retriever.invoke(query)
-            st.write(f"Found {len(docs)} relevant chunks.")
-            status.update(label="🧠 Generating grounded answer...", state="running")
-            
-            context = "\n\n".join([doc.page_content for doc in docs])
-            
-            from langchain_core.output_parsers import StrOutputParser
-            chain = prompt | llm | StrOutputParser()
-            
-            status.update(label="💡 Answering...", state="complete")
+        try:
+            with st.spinner("Thinking..."):
+                # Retrieve relevant documents quietly in backend
+                docs = retriever.invoke(query)
+                context = "\n\n".join([doc.page_content for doc in docs])
+                chain = prompt | llm | StrOutputParser()
+                
+                answer = None
+                last_error = None
+                import time
 
-        # Stream the response
-        stream = chain.stream(
-            {
-                "context": context,
-                "question": query
-            }
-        )
-        answer = st.write_stream(stream)
-        
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": answer
-            }
-        )
-        
-        with st.expander("📚 View Retrieved Context"):
-            for i, doc in enumerate(docs, start=1):
-                st.markdown(f"### Chunk {i}")
-                st.write(doc.page_content)
-                if i != len(docs):
-                    st.divider()
+                for attempt in range(1, 4):
+                    try:
+                        answer = chain.invoke({"context": context, "question": query})
+                        break
+                    except Exception as e:
+                        last_error = e
+                        err_text = str(e)
+                        if "503" in err_text or "UNAVAILABLE" in err_text or "high demand" in err_text or "timed out" in err_text:
+                            time.sleep(2 * attempt)
+                        else:
+                            raise e
+
+                if answer is None:
+                    raise last_error
+
+            # Display the synthesized answer + any diagrams
+            display_response_with_diagrams(answer)
+
+            # Check if user explicitly requested an image or visual illustration
+            generated_img = None
+            if is_image_request(query):
+                with st.spinner("🎨 Generating technical illustration..."):
+                    generated_img = generate_visual_image(query)
+                    if generated_img:
+                        st.image(generated_img, caption="AI Generated Technical Illustration", use_container_width=True)
+
+            # Append assistant message to session state (including image if generated)
+            msg_data = {"role": "assistant", "content": answer}
+            if generated_img:
+                msg_data["image"] = generated_img
+            st.session_state.messages.append(msg_data)
+        except Exception as e:
+            st.error(f"⚠️ Error: {e}")
